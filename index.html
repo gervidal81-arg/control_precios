@@ -142,18 +142,47 @@
    ====================================================== */
 const API_URL = 'https://script.google.com/macros/s/AKfycbxYTG4pU8EgNUslH6kzzA4l51-PLCuOvAHbndphsdPiSDX_0mYZpqmigF-ar79WwL2Tyg/exec';
 
-async function llamarApi(accion, params){
-  const url = new URL(API_URL);
-  url.searchParams.set('action', accion);
-  for (const key in (params || {})){
-    if (params[key] !== undefined && params[key] !== null){
-      url.searchParams.set(key, params[key]);
+let _jsonpContador = 0;
+
+function llamarApi(accion, params){
+  return new Promise((resolve, reject) => {
+    const nombreCallback = '_cbApi' + (_jsonpContador++) + '_' + Date.now();
+    const url = new URL(API_URL);
+    url.searchParams.set('action', accion);
+    for (const key in (params || {})){
+      if (params[key] !== undefined && params[key] !== null){
+        url.searchParams.set(key, params[key]);
+      }
     }
-  }
-  const resp = await fetch(url.toString());
-  const json = await resp.json();
-  if (!json.ok) throw new Error(json.error || 'Error desconocido en la API');
-  return json.data;
+    url.searchParams.set('callback', nombreCallback);
+
+    const script = document.createElement('script');
+    let terminado = false;
+
+    const limpiar = () => {
+      delete window[nombreCallback];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      clearTimeout(timeoutId);
+    };
+
+    window[nombreCallback] = function(json){
+      terminado = true;
+      limpiar();
+      if (!json.ok) reject(new Error(json.error || 'Error desconocido en la API'));
+      else resolve(json.data);
+    };
+
+    script.onerror = function(){
+      if (!terminado){ limpiar(); reject(new Error('No se pudo conectar con la API. Revisá tu conexión.')); }
+    };
+
+    const timeoutId = setTimeout(() => {
+      if (!terminado){ limpiar(); reject(new Error('Tiempo de espera agotado conectando con la API.')); }
+    }, 15000);
+
+    script.src = url.toString();
+    document.body.appendChild(script);
+  });
 }
 
 let codigoActual = null;
