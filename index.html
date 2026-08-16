@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control de Precios</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --accent:#38bdf8; --accent2:#22c55e;
+    --text:#f1f5f9; --muted:#94a3b8; --danger:#f87171; --radius:16px;
+  }
+  *{box-sizing:border-box; -webkit-text-size-adjust:100%; text-size-adjust:100%;}
+  html{-webkit-text-size-adjust:100%; text-size-adjust:100%;}
+  body{
+    margin:0; font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+    background:var(--bg); color:var(--text); padding:20px 16px 60px;
+    font-size:32px;
+  }
+  h1{font-size:2.6rem; margin:6px 0 24px; text-align:center; letter-spacing:.3px;}
+  h2{font-size:2rem; margin:0 0 16px; color:var(--accent);}
+  .card{
+    background:var(--card); border-radius:var(--radius); padding:22px;
+    margin-bottom:20px; box-shadow:0 4px 14px rgba(0,0,0,.25); scroll-margin-top:16px;
+  }
+  #reader{width:100%; border-radius:var(--radius); overflow:hidden;}
+  button{
+    padding:20px; border:none; border-radius:12px;
+    font-size:1.8rem; font-weight:600; cursor:pointer;
+  }
+  .full{width:100%; margin-top:12px;}
+  .btn-primary{background:var(--accent); color:#0f172a;}
+  .btn-success{background:var(--accent2); color:#0f172a;}
+  .btn-secondary{background:#334155; color:var(--text);}
+  .btn-danger{background:var(--danger); color:#0f172a;}
+  .btn-icon{padding:14px 18px; font-size:1.7rem; border-radius:10px; flex-shrink:0;}
+  label{display:block; font-size:1.5rem; color:var(--muted); margin:16px 0 8px;}
+  input{
+    width:100%; padding:18px; border-radius:12px; border:1px solid #334155;
+    background:#0f172a; color:var(--text); font-size:1.8rem;
+  }
+  .badge{
+    display:inline-block; background:#334155; color:var(--accent);
+    padding:6px 16px; border-radius:24px; font-size:1.4rem; margin-bottom:10px;
+  }
+  .badge.nuevo{color:var(--danger);}
+  .fila-hist{
+    display:flex; justify-content:space-between; padding:14px 0;
+    border-bottom:1px solid #334155; font-size:1.6rem;
+  }
+  .fila-hist:last-child{border:none;}
+  .muted{color:var(--muted); font-size:1.5rem;}
+  .oculto{display:none;}
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--accent2); color:#0f172a; padding:16px 26px;
+    border-radius:34px; font-weight:600; font-size:1.7rem; z-index:99;
+    max-width:90vw; text-align:center;
+  }
+  .fila-lista{
+    display:flex; align-items:center; gap:14px; padding:16px 0;
+    border-bottom:1px solid #334155; flex-wrap:wrap;
+  }
+  .fila-lista:last-child{border:none;}
+  .fila-lista input[type=checkbox]{width:36px; height:36px; flex-shrink:0;}
+  .fila-lista .nombre-item{
+    flex:1; background:transparent; border:none; color:var(--text);
+    font-size:1.7rem; padding:6px 0; min-width:120px;
+  }
+  .fila-lista .acciones{display:flex; gap:10px;}
+  .add-row{display:flex; gap:10px; margin-top:10px;}
+  .add-row input{flex:1;}
+  .add-row button{flex-shrink:0; padding:18px 22px;}
+  .tag-codigo{font-size:1.3rem; color:var(--accent); flex-shrink:0;}
+  .resumen-lista{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:1.4rem; color:var(--muted); margin-top:16px; flex-wrap:wrap; gap:10px;
+  }
+  .resumen-lista button{
+    padding:12px 18px; font-size:1.3rem; background:#334155; color:var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<h1>📦 Control de Precios</h1>
+
+<!-- LISTA DE COMPRAS -->
+<div class="card" id="cardLista">
+  <h2>🛒 Lista de compras</h2>
+  <div class="add-row">
+    <input id="nuevoItem" placeholder="Agregar producto a la lista">
+    <button class="btn-primary" id="btnAgregarItem">+</button>
+  </div>
+  <div id="listaCompras" class="muted" style="margin-top:12px;">Cargando...</div>
+  <div class="resumen-lista" id="resumenLista"></div>
+</div>
+
+<!-- ESCANEO -->
+<div class="card">
+  <h2>📷 Escanear / cargar</h2>
+  <div id="reader"></div>
+  <button class="btn-secondary full" id="btnToggleScan">Iniciar escaneo</button>
+  <label>Código detectado (tocá ⌨ para escribirlo a mano)</label>
+  <div style="display:flex; gap:10px;">
+    <input id="codigoManual" placeholder="Código de barras" inputmode="numeric" readonly onclick="iniciarScan()">
+    <button class="btn-secondary btn-icon" type="button" onclick="habilitarTecladoManual()">⌨</button>
+  </div>
+  <button class="btn-primary full" id="btnBuscarManual">Buscar</button>
+</div>
+
+<!-- FORMULARIO -->
+<div class="card oculto" id="formCard">
+  <span class="badge" id="badgeEstado">Producto encontrado</span>
+  <label>Nombre</label>
+  <input id="nombre" placeholder="Nombre del producto">
+  <label>Categoría</label>
+  <input id="categoria" placeholder="Ej: Almacén, Limpieza">
+  <label>Precio actual</label>
+  <input id="precio" type="number" step="0.01" placeholder="0.00">
+  <label>Cantidad</label>
+  <input id="cantidad" type="number" step="1" value="1">
+  <button class="btn-success full" id="btnGuardar">Guardar registro</button>
+
+  <div id="historial" class="oculto" style="margin-top:18px;">
+    <label>Historial de precios</label>
+    <div id="listaHistorial"></div>
+  </div>
+</div>
+
+<!-- ACTIVIDAD RECIENTE -->
+<div class="card">
+  <h2>🕓 Actividad reciente</h2>
+  <div id="listaReciente" class="muted">Cargando...</div>
+</div>
+
+<script>
+/* ======================================================
+   PEGÁ ACÁ LA URL DE TU WEB APP DE APPS SCRIPT
+   (termina en /exec). La conseguís en:
+   Implementar → Administrar implementaciones → copiar URL
+   ====================================================== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbxYTG4pU8EgNUslH6kzzA4l51-PLCuOvAHbndphsdPiSDX_0mYZpqmigF-ar79WwL2Tyg/exec';
+
+async function llamarApi(accion, params){
+  const url = new URL(API_URL);
+  url.searchParams.set('action', accion);
+  for (const key in (params || {})){
+    if (params[key] !== undefined && params[key] !== null){
+      url.searchParams.set(key, params[key]);
+    }
+  }
+  const resp = await fetch(url.toString());
+  const json = await resp.json();
+  if (!json.ok) throw new Error(json.error || 'Error desconocido en la API');
+  return json.data;
+}
+
+let codigoActual = null;
+let itemListaActivo = null;
+let _nombreItemActivo = '';
+let scanner = null;
+let escaneando = false;
+
+/* ---------- ESCANEO ---------- */
+
+function onScanSuccess(decodedText){
+  detenerScan();
+  procesarCodigo(decodedText);
+}
+
+document.getElementById('btnToggleScan').onclick = function(){ iniciarScan(); };
+
+function iniciarScan(){
+  if (escaneando) { detenerScan(); return; }
+
+  scanner = new Html5Qrcode("reader");
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 220 },
+    onScanSuccess
+  ).then(function(){
+    escaneando = true;
+    document.getElementById('btnToggleScan').textContent = "Detener escaneo";
+    document.getElementById('reader').scrollIntoView({behavior:'smooth', block:'center'});
+  }).catch(function(err){
+    escaneando = false;
+    document.getElementById('btnToggleScan').textContent = "Iniciar escaneo";
+    alert('No se pudo abrir la cámara: ' + err);
+  });
+}
+
+function detenerScan(){
+  if (scanner && escaneando){
+    scanner.stop().then(function(){
+      scanner.clear();
+      escaneando = false;
+      document.getElementById('btnToggleScan').textContent = "Iniciar escaneo";
+    }).catch(function(){
+      escaneando = false;
+      document.getElementById('btnToggleScan').textContent = "Iniciar escaneo";
+    });
+  } else {
+    escaneando = false;
+    document.getElementById('btnToggleScan').textContent = "Iniciar escaneo";
+  }
+}
+
+function habilitarTecladoManual(){
+  const input = document.getElementById('codigoManual');
+  input.removeAttribute('readonly');
+  input.value = '';
+  input.focus();
+}
+
+document.getElementById('btnBuscarManual').onclick = function(){
+  const c = document.getElementById('codigoManual').value.trim();
+  if (c) procesarCodigo(c);
+};
+
+async function procesarCodigo(codigo){
+  codigoActual = codigo;
+  const input = document.getElementById('codigoManual');
+  input.value = codigo;
+  input.setAttribute('readonly', 'readonly');
+
+  if (itemListaActivo){
+    try { await llamarApi('vincularCodigoItemLista', { id: itemListaActivo, codigo: codigo }); }
+    catch(e) { console.error(e); }
+  }
+
+  try {
+    const producto = await llamarApi('buscarProducto', { codigo: codigo });
+    mostrarFormulario(producto);
+  } catch(e) {
+    alert('Error buscando el producto: ' + e.message);
+  }
+}
+
+/* ---------- FORMULARIO ---------- */
+
+function mostrarFormulario(producto){
+  document.getElementById('formCard').classList.remove('oculto');
+  const badge = document.getElementById('badgeEstado');
+  if (producto){
+    badge.textContent = "Producto encontrado";
+    badge.classList.remove('nuevo');
+    document.getElementById('nombre').value = producto.nombre;
+    document.getElementById('categoria').value = producto.categoria;
+    document.getElementById('precio').value = producto.ultimoPrecio;
+    document.getElementById('cantidad').value = producto.ultimaCantidad || 1;
+    cargarHistorial(codigoActual);
+  } else {
+    badge.textContent = "Producto nuevo — completá los datos";
+    badge.classList.add('nuevo');
+    document.getElementById('nombre').value = itemListaActivo ? _nombreItemActivo : '';
+    document.getElementById('categoria').value = '';
+    document.getElementById('precio').value = '';
+    document.getElementById('cantidad').value = 1;
+    document.getElementById('historial').classList.add('oculto');
+  }
+  document.getElementById('formCard').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+async function cargarHistorial(codigo){
+  try {
+    const hist = await llamarApi('obtenerHistorialProducto', { codigo: codigo });
+    const cont = document.getElementById('listaHistorial');
+    const wrap = document.getElementById('historial');
+    if (!hist.length){ wrap.classList.add('oculto'); return; }
+    cont.innerHTML = hist.slice(0,5).map(h =>
+      `<div class="fila-hist"><span>${h.fecha}</span><span>$${h.precio} x${h.cantidad}</span></div>`
+    ).join('');
+    wrap.classList.remove('oculto');
+  } catch(e) { console.error(e); }
+}
+
+document.getElementById('btnGuardar').onclick = async function(){
+  const registro = {
+    codigo: codigoActual,
+    nombre: document.getElementById('nombre').value.trim(),
+    categoria: document.getElementById('categoria').value.trim(),
+    precio: document.getElementById('precio').value,
+    cantidad: document.getElementById('cantidad').value
+  };
+  if (!registro.codigo || !registro.nombre || !registro.precio || !registro.cantidad){
+    alert('Completá todos los campos obligatorios.');
+    return;
+  }
+  this.disabled = true;
+  const idItemComprado = itemListaActivo;
+
+  try {
+    const res = await llamarApi('registrarMovimiento', registro);
+    mostrarToast('Guardado ✓ Total: $' + Number(res.total).toFixed(2));
+    document.getElementById('formCard').classList.add('oculto');
+    document.getElementById('codigoManual').value = '';
+
+    if (idItemComprado){
+      await llamarApi('actualizarEstadoItemLista', { id: idItemComprado, estado: 'comprado' });
+      itemListaActivo = null;
+    }
+    await cargarListaCompras();
+    document.getElementById('cardLista').scrollIntoView({behavior:'smooth', block:'start'});
+    await cargarRecientes();
+  } catch(e) {
+    alert('Error guardando: ' + e.message);
+  } finally {
+    document.getElementById('btnGuardar').disabled = false;
+  }
+};
+
+/* ---------- LISTA DE COMPRAS ---------- */
+
+document.getElementById('btnAgregarItem').onclick = agregarItem;
+document.getElementById('nuevoItem').addEventListener('keypress', function(e){
+  if (e.key === 'Enter') agregarItem();
+});
+
+async function agregarItem(){
+  const input = document.getElementById('nuevoItem');
+  const nombre = input.value.trim();
+  if (!nombre) return;
+  input.value = '';
+  try {
+    await llamarApi('agregarItemLista', { nombre: nombre });
+    await cargarListaCompras();
+  } catch(e) { alert('Error agregando ítem: ' + e.message); }
+}
+
+async function cargarListaCompras(){
+  try {
+    const lista = await llamarApi('obtenerListaCompras', {});
+    renderLista(lista);
+  } catch(e) {
+    document.getElementById('listaCompras').textContent = 'Error cargando la lista: ' + e.message;
+  }
+}
+
+function renderLista(lista){
+  const activos = lista.filter(i => i.estado === 'activo');
+  const descartados = lista.filter(i => i.estado === 'descartado').length;
+  const comprados = lista.filter(i => i.estado === 'comprado').length;
+
+  const cont = document.getElementById('listaCompras');
+  if (!lista.length){
+    cont.innerHTML = '<span class="muted">Lista vacía. Agregá productos arriba.</span>';
+  } else if (!activos.length){
+    cont.innerHTML = '<span class="muted">No quedan ítems pendientes en esta ronda.</span>';
+  } else {
+    cont.innerHTML = activos.map(item => `
+      <div class="fila-lista" data-id="${item.id}">
+        <input type="checkbox" checked title="Destildar para excluir de esta compra"
+          onchange="if(!this.checked) descartarItem('${item.id}')">
+        <input class="nombre-item" value="${item.nombre.replace(/"/g,'&quot;')}"
+          onchange="editarNombreItem('${item.id}', this.value)">
+        ${item.codigo ? '<span class="tag-codigo">✓</span>' : ''}
+        <div class="acciones">
+          <button class="btn-primary btn-icon" title="Escanear"
+            onclick="escanearParaItem('${item.id}', '${item.nombre.replace(/'/g,"\\'")}')">📷</button>
+          <button class="btn-success btn-icon" title="Marcar comprado sin escanear"
+            onclick="marcarCompradoManual('${item.id}')">✓</button>
+          <button class="btn-danger btn-icon" title="Eliminar definitivamente"
+            onclick="borrarItem('${item.id}')">✕</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const resumen = document.getElementById('resumenLista');
+  const ocultos = descartados + comprados;
+  if (ocultos > 0){
+    resumen.innerHTML = `
+      <span>${activos.length} pendientes · ${descartados} descartados · ${comprados} comprados</span>
+      <button onclick="restablecerLista()">↺ Restablecer lista</button>`;
+  } else {
+    resumen.innerHTML = `<span>${activos.length} pendientes</span>`;
+  }
+}
+
+async function descartarItem(id){
+  try { await llamarApi('actualizarEstadoItemLista', { id: id, estado: 'descartado' }); await cargarListaCompras(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
+async function marcarCompradoManual(id){
+  try { await llamarApi('actualizarEstadoItemLista', { id: id, estado: 'comprado' }); await cargarListaCompras(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
+async function restablecerLista(){
+  try { await llamarApi('restablecerLista', {}); await cargarListaCompras(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
+async function editarNombreItem(id, nombre){
+  try { await llamarApi('actualizarNombreItemLista', { id: id, nombre: nombre.trim() }); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
+async function borrarItem(id){
+  if (!confirm('¿Eliminar definitivamente este ítem de la lista?')) { cargarListaCompras(); return; }
+  try { await llamarApi('eliminarItemLista', { id: id }); await cargarListaCompras(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
+function escanearParaItem(id, nombre){
+  itemListaActivo = id;
+  _nombreItemActivo = nombre;
+  iniciarScan();
+}
+
+/* ---------- ACTIVIDAD RECIENTE ---------- */
+
+async function cargarRecientes(){
+  try {
+    const lista = await llamarApi('obtenerUltimosRegistros', { limite: 8 });
+    const cont = document.getElementById('listaReciente');
+    if (!lista.length){ cont.textContent = "Todavía no hay registros."; return; }
+    cont.innerHTML = lista.map(r =>
+      `<div class="fila-hist"><span>${r.nombre}<br><span class="muted">${r.fecha}</span></span><span>$${r.precio} x${r.cantidad}</span></div>`
+    ).join('');
+  } catch(e) {
+    document.getElementById('listaReciente').textContent = 'Error cargando actividad: ' + e.message;
+  }
+}
+
+function mostrarToast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=> t.remove(), 2500);
+}
+
+cargarRecientes();
+cargarListaCompras();
+</script>
+</body>
+</html>
